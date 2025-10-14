@@ -1,5 +1,5 @@
 from arango import ArangoClient
-from typing import Optional
+from typing import Optional, List
 import os
 
 
@@ -97,14 +97,14 @@ class ArangoDBManager:
                 return_new=True
             )
 
-            print(f"Saved profile for {symbol}")
+            print(f"✓ Saved profile for {symbol}")
             return result['_key']
 
         except Exception as e:
-            print(f"Error inserting company profile: {e}")
+            print(f"✗ Error inserting company profile for {profile_data.get('symbol', 'unknown')}: {e}")
             return None
 
-    def insert_multiple_profiles(self, profiles: list) -> int:
+    def insert_multiple_profiles(self, profiles: List[dict]) -> int:
         """
         Insert or update multiple company profiles
 
@@ -139,7 +139,7 @@ class ArangoDBManager:
             print(f"Error retrieving company {symbol}: {e}")
             return None
 
-    def get_companies_by_sector(self, sector: str) -> list:
+    def get_companies_by_sector(self, sector: str) -> List[dict]:
         """Get all companies in a specific sector"""
         try:
             query = """
@@ -153,7 +153,7 @@ class ArangoDBManager:
             print(f"Error querying by sector: {e}")
             return []
 
-    def get_companies_by_industry(self, industry: str) -> list:
+    def get_companies_by_industry(self, industry: str) -> List[dict]:
         """Get all companies in a specific industry"""
         try:
             query = """
@@ -167,68 +167,20 @@ class ArangoDBManager:
             print(f"Error querying by industry: {e}")
             return []
 
+    def get_all_companies(self) -> List[dict]:
+        """Get all companies in the database"""
+        try:
+            query = """
+                FOR doc IN company_profiles
+                    RETURN doc
+            """
+            cursor = self.db.aql.execute(query)
+            return list(cursor)
+        except Exception as e:
+            print(f"Error retrieving all companies: {e}")
+            return []
+
     def close(self):
         """Close the database connection"""
         self.client.close()
         print("Connection closed")
-
-
-# Example usage
-if __name__ == "__main__":
-    # Initialize and connect
-    db_manager = ArangoDBManager(
-        host="http://localhost:8529",
-        username="root",
-        password="openSesame",  # Change this to your password
-        db_name="fmp_data"
-    )
-
-    if db_manager.connect():
-        # Example: Insert single profile
-        example_profile = {
-            "symbol": "BEL.NS",
-            "price": 402.4,
-            "marketCap": 2941455000790,
-            "beta": 0.359,
-            "lastDividend": 2.4,
-            "range": "240.25-436",
-            "change": -7,
-            "changePercentage": -1.70982,
-            "volume": 10784671,
-            "averageVolume": 13441561,
-            "companyName": "Bharat Electronics Limited",
-            "currency": "INR",
-            "cik": None,
-            "isin": "INE263A01024",
-            "cusip": "Y0881Q141",
-            "exchangeFullName": "National Stock Exchange of India",
-            "exchange": "NSE",
-            "industry": "Aerospace & Defense",
-            "website": "https://www.bel-india.in",
-            "description": "Bharat Electronics Limited",
-            "ceo": "Manoj Jain",
-            "sector": "Industrials",
-            "country": "IN",
-            "fullTimeEmployees": "11444",
-            "phone": "91 80 2503 9300",
-            "address": "Outer Ring Road",
-            "city": "Bengaluru",
-            "state": None,
-            "zip": "560045",
-            "image": "https://images.financialmodelingprep.com/symbol/BEL.NS.png",
-            "ipoDate": "2002-07-01",
-            "defaultImage": False,
-            "isEtf": False,
-            "isActivelyTrading": True,
-            "isAdr": False,
-            "isFund": False
-        }
-
-        db_manager.insert_company_profile(example_profile)
-
-        # Retrieve the profile
-        retrieved = db_manager.get_company_by_symbol("BEL.NS")
-        print(f"\nRetrieved profile: {retrieved}")
-
-        # Close connection
-        db_manager.close()

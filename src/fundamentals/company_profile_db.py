@@ -1,6 +1,7 @@
 import requests
 from typing import List, Optional
-from arango_connection import ArangoDBManager
+from db_connector import ArangoDBManager
+import time
 
 
 class FMPDataFetcher:
@@ -15,7 +16,7 @@ class FMPDataFetcher:
             db_manager: ArangoDBManager instance
         """
         self.api_key = api_key
-        self.base_url = "https://financialmodelingprep.com/api/v3"
+        self.base_url = "https://financialmodelingprep.com/stable"
         self.db_manager = db_manager
 
     def fetch_company_profile(self, symbol: str) -> Optional[dict]:
@@ -29,8 +30,11 @@ class FMPDataFetcher:
             Company profile dictionary or None
         """
         try:
-            url = f"{self.base_url}/profile/{symbol}"
-            params = {"apikey": self.api_key}
+            url = f"{self.base_url}/profile"
+            params = {
+                "symbol": symbol,
+                "apikey": self.api_key
+            }
 
             response = requests.get(url, params=params)
             response.raise_for_status()
@@ -40,11 +44,11 @@ class FMPDataFetcher:
             if data and len(data) > 0:
                 return data[0]  # API returns list with single item
             else:
-                print(f"No data found for symbol: {symbol}")
+                print(f"⚠ No data found for symbol: {symbol}")
                 return None
 
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching profile for {symbol}: {e}")
+            print(f"✗ Error fetching profile for {symbol}: {e}")
             return None
 
     def fetch_and_save_profile(self, symbol: str) -> bool:
@@ -65,12 +69,13 @@ class FMPDataFetcher:
 
         return False
 
-    def fetch_and_save_multiple_profiles(self, symbols: List[str]) -> dict:
+    def fetch_and_save_multiple_profiles(self, symbols: List[str], delay: float = 0.2) -> dict:
         """
         Fetch multiple company profiles and save to ArangoDB
 
         Args:
             symbols: List of stock symbols
+            delay: Delay between API calls in seconds (to avoid rate limits)
 
         Returns:
             Dictionary with success/failure counts
@@ -81,12 +86,18 @@ class FMPDataFetcher:
             'failed_symbols': []
         }
 
-        for symbol in symbols:
+        for i, symbol in enumerate(symbols, 1):
+            print(f"[{i}/{len(symbols)}] Processing {symbol}...")
+
             if self.fetch_and_save_profile(symbol):
                 results['success'] += 1
             else:
                 results['failed'] += 1
                 results['failed_symbols'].append(symbol)
+
+            # Add delay to avoid hitting API rate limits
+            if i < len(symbols):
+                time.sleep(delay)
 
         return results
 
@@ -114,13 +125,14 @@ class FMPDataFetcher:
             print(f"Error fetching exchange symbols: {e}")
             return []
 
-    def update_all_exchange_profiles(self, exchange: str = "NSE", batch_size: int = 50) -> dict:
+    def update_all_exchange_profiles(self, exchange: str = "NSE", batch_size: int = 50, delay: float = 0.2) -> dict:
         """
         Fetch and update all company profiles for an exchange
 
         Args:
             exchange: Exchange code
             batch_size: Number of symbols to process in each batch
+            delay: Delay between API calls in seconds
 
         Returns:
             Dictionary with processing statistics
@@ -138,56 +150,15 @@ class FMPDataFetcher:
 
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i + batch_size]
-            print(f"\nProcessing batch {i // batch_size + 1}: symbols {i + 1}-{min(i + batch_size, len(symbols))}")
+            print(f"\n{'=' * 60}")
+            print(f"Processing batch {i // batch_size + 1}: symbols {i + 1}-{min(i + batch_size, len(symbols))}")
+            print(f"{'=' * 60}")
 
-            batch_results = self.fetch_and_save_multiple_profiles(batch)
+            batch_results = self.fetch_and_save_multiple_profiles(batch, delay=delay)
             total_results['success'] += batch_results['success']
             total_results['failed'] += batch_results['failed']
             total_results['failed_symbols'].extend(batch_results['failed_symbols'])
 
+            print(f"\nBatch summary: {batch_results['success']} succeeded, {batch_results['failed']} failed")
+
         return total_results
-
-
-# Example usage
-if __name__ == "__main__":
-    # Setup ArangoDB connection
-    db_manager = ArangoDBManager(
-        host="http://localhost:8529",
-        username="root",
-        password="openSesame",
-        db_name="fmp_data"
-    )
-
-    if not db_manager.connect():
-        print("Failed to connect to ArangoDB")
-        exit(1)
-
-    # Initialize FMP fetcher
-    FMP_API_KEY = "your_api_key_here"  # Replace with your actual API key
-    fetcher = FMPDataFetcher(FMP_API_KEY, db_manager)
-
-    # Example 1: Fetch single company
-    print("Fetching single company profile...")
-    fetcher.fetch_and_save_profile("BEL.NS")
-
-    # Example 2: Fetch multiple companies
-    print("\nFetching multiple company profiles...")
-    indian_stocks = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
-    results = fetcher.fetch_and_save_multiple_profiles(indian_stocks)
-    print(f"Results: {results}")
-
-    # Example 3: Retrieve saved data
-    print("\nRetrieving saved profile...")
-    profile = db_manager.get_company_by_symbol("BEL.NS")
-    if profile:
-        print(f"Company: {profile.get('companyName')}")
-        print(f"Sector: {profile.get('sector')}")
-        print(f"Market Cap: {profile.get('marketCap')}")
-
-    # Example 4: Query by sector
-    print("\nQuerying companies in Industrials sector...")
-    industrials = db_manager.get_companies_by_sector("Industrials")
-    print(f"Found {len(industrials)} companies in Industrials sector")
-
-    # Close connection
-    db_manager.close()
