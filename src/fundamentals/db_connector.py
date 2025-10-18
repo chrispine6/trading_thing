@@ -4,7 +4,11 @@ import os
 
 
 class ArangoDBManager:
-    """Manages ArangoDB connection and operations for FMP data"""
+    """
+    Manages ArangoDB connection and operations for FMP data
+        methods
+            1. connect- to establish a aconnection
+    """
 
     def __init__(
             self,

@@ -3,6 +3,14 @@ from typing import List, Optional
 from db_connector import ArangoDBManager
 import time
 
+"""
+    fmp data fetcher
+        1. fetch company profile
+        2. fetch and save profile
+        3. fetch and save multiple profiles
+        4. fetch exchange profiles
+        5. update all exchange profiles
+"""
 
 class FMPDataFetcher:
     """Fetches data from Financial Modeling Prep API and stores in ArangoDB"""
